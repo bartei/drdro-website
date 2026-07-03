@@ -1,9 +1,9 @@
 name: Deploy static content
 
-# Mock pipeline: publishes a placeholder page to this repo's own subfolder on
-# the static content host, proving out the deploy path (self-hosted runner ->
-# rsync over SSH -> nginx-static). Real content generation replaces the
-# "Build page" step later; the deploy step should not need to change.
+# Publishes this static site to the static content host
+# (self-hosted runner -> rsync over SSH -> nginx-static).
+# The site lives at the repo root; the "Assemble site" step stages it into
+# public/, then the deploy step rsyncs public/ to $STATIC_DEPLOY_PATH/<repo-name>.
 
 on:
   push:
@@ -17,21 +17,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build page
+      - name: Assemble site
         run: |
+          rm -rf public
           mkdir -p public
-          cat > public/index.html <<HTML
-          <!doctype html>
-          <html>
-            <head><title>${{ github.event.repository.name }}</title></head>
-            <body>
-              <h1>${{ github.event.repository.name }}</h1>
-              <p>Mock placeholder page — real content generation lands here later.</p>
-              <p>Commit: ${{ github.sha }}</p>
-              <p>Deployed: $(date -u +%Y-%m-%dT%H:%M:%SZ)</p>
-            </body>
-          </html>
-          HTML
+          cp -R assets public/
+          cp ./*.html public/
+          test -f public/index.html   # fail fast if the site is missing
 
       - name: Deploy via rsync
         env:
