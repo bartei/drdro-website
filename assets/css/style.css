@@ -471,3 +471,48 @@ td code { white-space: nowrap; }
 .video-sub { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; }
 .video-sub .chip { font-size: 0.72rem; padding: 4px 9px; }
 .video-sub a { font-size: 0.82rem; white-space: nowrap; }
+
+/* Nav dropdown ------------------------------------------------------------- */
+.nav-dd { position: relative; display: inline-flex; }
+.nav-dd-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--sans); font-size: 0.92rem; font-weight: 500;
+  color: var(--text-dim); background: none; border: 0; cursor: pointer;
+  padding: 8px 12px; border-radius: 8px;
+}
+.nav-dd-btn:hover { color: var(--text); background: var(--surface-2); }
+.nav-dd-btn.active { color: var(--amber-2); background: var(--amber-soft); }
+.nav-dd-btn span { font-size: 0.7em; transition: transform .15s ease; }
+.nav-dd:hover .nav-dd-btn span,
+.nav-dd.open .nav-dd-btn span { transform: rotate(180deg); }
+
+.nav-dd-menu {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 120;
+  min-width: 210px; padding: 8px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--shadow);
+  opacity: 0; visibility: hidden; transform: translateY(-6px);
+  transition: opacity .15s ease, transform .15s ease, visibility .15s;
+}
+.nav-dd:hover .nav-dd-menu,
+.nav-dd:focus-within .nav-dd-menu,
+.nav-dd.open .nav-dd-menu { opacity: 1; visibility: visible; transform: translateY(0); }
+.nav-dd-menu a {
+  display: block; padding: 9px 12px; border-radius: 8px;
+  color: var(--text-dim); font-size: 0.9rem; white-space: nowrap;
+}
+.nav-dd-menu a:hover { color: var(--text); background: var(--surface-2); text-decoration: none; }
+.nav-dd-menu a.active { color: var(--amber-2); background: var(--amber-soft); }
+
+@media (max-width: 860px) {
+  /* In the mobile panel the dropdown is a static, always-open group. */
+  .nav-dd { display: block; }
+  .nav-dd-btn { width: 100%; justify-content: space-between; padding: 12px 14px; font-size: 1rem; }
+  .nav-dd-btn span { display: none; }
+  .nav-dd-menu {
+    position: static; opacity: 1; visibility: visible; transform: none;
+    min-width: 0; box-shadow: none; border: 0; background: none;
+    padding: 0 0 0 12px; margin: 0 0 6px;
+  }
+  .nav-dd-menu a { padding: 10px 14px; }
+}

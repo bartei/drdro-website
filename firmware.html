@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Board firmware (drdro-firmware-f4) — drDRO</title>
+  <meta name="description" content="Build, flash, configure and develop the drDRO STM32F411 board firmware: PlatformIO toolchain, dual-bank IAP bootloader, ST-Link and RS-485 flashing, CLI reference.">
+  <link rel="icon" type="image/png" href="assets/img/favicon.png">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><img class="logo" src="assets/img/logo.png" alt=""> dr<b>DRO</b></a>
+    <button class="nav-toggle" aria-label="Menu">&#8801;</button>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="features.html">Features</a>
+      <a href="screenshots.html">Screenshots</a>
+      <a href="videos.html">Videos</a>
+      <a href="flash.html">Get Started</a>
+      <div class="nav-dd">
+        <button class="nav-dd-btn" aria-haspopup="true" aria-expanded="false">Developers <span aria-hidden="true">&#9662;</span></button>
+        <div class="nav-dd-menu">
+          <a href="develop.html">App development</a>
+          <a href="firmware.html">Board firmware</a>
+          <a href="arch.html">Appliance image</a>
+          <a href="reference.html">Protocol reference</a>
+        </div>
+      </div>
+      <a class="nav-cta" href="https://github.com/bartei/drdro-firmware-f4" target="_blank" rel="noopener">GitHub &#8599;</a>
+    </div>
+  </div>
+</nav>
+
+<header class="section-tight" style="padding-top:48px">
+  <div class="wrap">
+    <span class="eyebrow">Board firmware · drdro-firmware-f4</span>
+    <h1 style="font-size:clamp(2rem,4.4vw,3rem);margin:.2rem 0 .6rem">The STM32 board firmware</h1>
+    <p class="lead">Firmware for the drDRO controller board (STM32F411CEU6): FreeRTOS, a custom RS-485 line
+      protocol, trapezoidal servo motion, and a dual-bank IAP bootloader for safe field updates. Built with
+      PlatformIO. This page covers setting it up, building, flashing, configuring and developing it.</p>
+    <div class="btn-row" style="margin-top:6px">
+      <a class="btn btn-ghost" href="https://github.com/bartei/drdro-firmware-f4" target="_blank" rel="noopener">Firmware repo &#8599;</a>
+      <span class="chip">STM32F411CEU6 · Cortex-M4F · 100 MHz</span>
+      <span class="chip">512K flash / 128K RAM</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap section-tight" style="padding-top:0">
+<div class="doc-layout">
+
+  <aside class="toc">
+    <h5>On this page</h5>
+    <a href="#overview">Overview</a>
+    <a href="#layout">Flash map &amp; layout</a>
+    <a href="#setup">Toolchain setup</a>
+    <a href="#build">Build &amp; test</a>
+    <a href="#flash">Flashing the board</a>
+    <a href="#configure">Configure (settings)</a>
+    <a href="#cli">CLI reference</a>
+    <a href="#diag">Diagnostics</a>
+    <a href="#develop">Develop</a>
+    <a href="#links">Links</a>
+  </aside>
+
+  <div>
+
+    <section id="overview" class="anchor-h">
+      <h2>Overview</h2>
+      <p>The firmware is the real-time half of drDRO — it reads the encoders, drives the axis, keeps the
+        persistent settings, and speaks the protocol the <a href="features.html">host app</a> talks to.</p>
+      <ul class="ticks">
+        <li>Reads <strong>4 quadrature scales</strong> (TIM1–TIM4 in encoder mode).</li>
+        <li>Drives a <strong>step/dir servo</strong> with trapezoidal accel/decel ramps — jog, indexing and scale-synchronised motion — from a TIM9 interrupt <em>relocated to RAM</em>, so it keeps stepping even during a flash write.</li>
+        <li>Speaks the <strong>RS-485 line protocol</strong> on USART1 @ 115200 8N1 (auto-direction).</li>
+        <li>Stores rarely-changed settings (scale ratios, servo config, boot mode, active bank) in flash, power-fail-safe.</li>
+        <li><strong>Field-updatable</strong> over RS-485 via a two-bank A/B bootloader — keep two versions, switch or roll back.</li>
+      </ul>
+      <div class="callout info"><div class="ci">&#128279;</div><div><p>The wire protocol and variable registry are documented on the <a href="reference.html#protocol">Reference</a> page. This page is about the firmware project itself.</p></div></div>
+    </section>
+
+    <hr class="hr" style="margin:40px 0">
+
+    <section id="layout" class="anchor-h">
+      <h2>Flash map &amp; project layout</h2>
+      <p>The 512&nbsp;KB flash is partitioned for a dual-bank bootloader. The app is linked <em>once</em> for the
+        Exec region; the bootloader copies the active bank into Exec and jumps to it (<strong>copy-on-activate</strong>).
+        Switching banks or rolling back just changes the active-bank byte in settings.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Region</th><th>Sector(s)</th><th>Address</th><th>Size</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr><td>Bootloader</td><td>0</td><td><code>0x08000000</code></td><td>16 K</td><td>Never erased by an update</td></tr>
+            <tr><td>Settings A / B</td><td>1 / 2</td><td><code>0x08004000</code></td><td>16 K each</td><td>Ping-pong, power-fail safe</td></tr>
+            <tr><td>(reserved)</td><td>3–4</td><td><code>0x0800C000</code></td><td>80 K</td><td>Future</td></tr>
+            <tr><td><b>Exec</b></td><td>5</td><td><code>0x08020000</code></td><td>128 K</td><td>The app runs here</td></tr>
+            <tr><td><b>Bank 0 / 1</b></td><td>6 / 7</td><td><code>0x08040000</code> / <code>0x08060000</code></td><td>128 K each</td><td>Stored app versions</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h4>Repository layout</h4>
+      <div class="code"><div class="code-head"><span>drdro-firmware-f4/</span></div>
+<pre><code>app/          <span class="cmt"># the application (linked at Exec 0x08020000)</span>
+  src/        <span class="cmt"># app + frozen CubeMX glue (hand-maintained; NOT regenerated)</span>
+  include/    <span class="cmt"># app + config headers (FreeRTOSConfig.h, hal_conf.h)</span>
+  lib/FreeRTOS<span class="cmt"># vendored middleware</span>
+  test/       <span class="cmt"># native unit tests + HAL/RTOS mocks</span>
+bootloader/   <span class="cmt"># IAP bootloader (sector 0, 0x08000000)</span>
+shared/       <span class="cmt"># Bootloader.h, Settings.h, BlinkCode.h (app<->bl contract)</span>
+tools/        <span class="cmt"># dro_update.py, make_factory.py, build-release.sh</span>
+docs/         <span class="cmt"># protocol_design, dualbank_design, HARDWARE.md, trackers</span></code></pre>
+      </div>
+    </section>
+
+    <hr class="hr" style="margin:40px 0">
+
+    <section id="setup" class="anchor-h">
+      <h2>Toolchain setup</h2>
+      <p>The project builds with <strong>PlatformIO</strong> (platform <code>ststm32@~19.4.0</code>,
+        <code>framework = stm32cube</code>, board <code>genericSTM32F411CE</code>). The ARM toolchain and
+        framework are fetched automatically on the first build.</p>
+
+      <div data-tabs>
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="pio">PlatformIO Core</button>
+          <button class="tab-btn" data-tab="dc">Dev container</button>
+          <button class="tab-btn" data-tab="nix">NixOS</button>
+        </div>
+        <div class="tab-panel active" data-panel="pio">
+          <p class="small">Install PlatformIO Core (the <code>pio</code> CLI), then clone the repo. The VS&nbsp;Code PlatformIO extension works too.</p>
+          <div class="code"><div class="code-head"><span>bash</span><button class="copy-btn">Copy</button></div>
+<pre><code><span class="cmt"># PlatformIO Core (official installer, or: pipx install platformio)</span>
+python3 -c "$(curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py)"
+
+git clone https://github.com/bartei/drdro-firmware-f4.git
+cd drdro-firmware-f4</code></pre>
+          </div>
+        </div>
+        <div class="tab-panel" data-panel="dc">
+          <p class="small">A ready-to-use VS&nbsp;Code dev container ships in <code>.devcontainer/</code> with PlatformIO,
+            the STM32 toolchain, serial terminals and the GitHub CLI. Open the folder and <b>Reopen in Container</b>;
+            the first build warms the cache. ST-Link USB passthrough is Linux-host only (see the container README).</p>
+        </div>
+        <div class="tab-panel" data-panel="nix">
+          <p class="small">On hosts without <code>pio</code> on PATH (e.g. NixOS), wrap the commands:</p>
+          <div class="code"><div class="code-head"><span>bash</span><button class="copy-btn">Copy</button></div>
+<pre><code>nix-shell -p platformio --run 'pio run -d app'</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout info"><div class="ci">&#128268;</div><div><p><b>Flashing hardware:</b> an <b>ST-Link</b> (v2/v3) is used to program the board over SWD. On Linux, install PlatformIO's udev rules so the probe is accessible without root:</p>
+        <div class="code" style="margin:.6rem 0 0"><div class="code-head"><span>bash</span><button class="copy-btn">Copy</button></div>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core/master/platformio/assets/system/99-platformio-udev.rules \
+  | sudo tee /etc/udev/rules.d/99-platformio-udev.rules
+sudo udevadm control --reload &amp;&amp; sudo udevadm trigger</code></pre>
+        </div></div></div>
+    </section>
+
+    <section id="build" class="anchor-h">
+      <h2>Build &amp; test</h2>
+      <p>The app and bootloader are two sibling PlatformIO projects; pass <code>-d &lt;dir&gt;</code> to target one.</p>
+      <div class="code"><div class="code-head"><span>bash</span><button class="copy-btn">Copy</button></div>
+<pre><code>pio run  -d app                  <span class="cmt"># build the application  -> firmware.{elf,bin,hex}</span>
+pio run  -d bootloader           <span class="cmt"># build the bootloader</span>
+pio test -d app -e native        <span class="cmt"># host-side protocol/settings unit tests (no hardware)</span>
+pio run  -d app -t clean         <span class="cmt"># linker-script changes need a clean relink</span></code></pre>
+      </div>
+      <p class="small muted">Artifacts: <code>app/.pio/build/drdro_f411ce/firmware.{elf,bin,hex}</code> and
+        <code>bootloader/.pio/build/bootloader/firmware.{elf,bin,hex}</code>. The native tests link only
+        <code>Protocol.c</code> and mock the HAL/RTOS — they run anywhere, no board required.</p>
+    </section>
+
+    <hr class="hr" style="margin:40px 0">
+
+    <section id="flash" class="anchor-h">
+      <h2>Flashing the board</h2>
+
+      <h4>First-time flash — combined factory image</h4>
+      <p>A brand-new board needs both the bootloader <em>and</em> an app in Exec. Merge them into one image and
+        write it with ST-Link:</p>
+      <div class="code"><div class="code-head"><span>bash</span><button class="copy-btn">Copy</button></div>
+<pre><code>pio run -d app &amp;&amp; pio run -d bootloader          <span class="cmt"># build both first</span>
+python tools/make_factory.py factory.hex \
+    bootloader/.pio/build/bootloader/firmware.hex \
+    app/.pio/build/drdro_f411ce/firmware.hex
+st-flash --format ihex write factory.hex</code></pre>
+      </div>
+
+      <h4>Iterating — flash a single project over ST-Link</h4>
+      <div class="code"><div class="code-head"><span>bash</span><button class="copy-btn">Copy</button></div>
+<pre><code>pio run -d app        -t upload   <span class="cmt"># flash the app to Exec (0x08020000)</span>
+pio run -d bootloader -t upload   <span class="cmt"># flash the bootloader (sector 0)</span></code></pre>
+      </div>
+
+      <h4>Field update — over RS-485, no probe</h4>
+      <p>For bring-up/debug you can drive the whole dual-bank update cycle from a host PC over the serial link
+        (self-contained YMODEM sender, baud 115200):</p>
+      <div class="code"><div class="code-head"><span>bash</span><button class="copy-btn">Copy</button></div>
+<pre><code><span class="cmt"># auto-pick the inactive bank, flash, select, boot, verify:</span>
+python tools/dro_update.py /dev/ttyACM0 app/.pio/build/drdro_f411ce/firmware.bin
+python tools/dro_update.py /dev/ttyACM0 firmware.bin --bank 1        <span class="cmt"># force a bank</span>
+python tools/dro_update.py /dev/ttyACM0 firmware.bin --no-boot       <span class="cmt"># flash+select only</span></code></pre>
+      </div>
+      <div class="callout good"><div class="ci">&#9889;</div><div><p><b>In production, end users don't need any of this</b> — the drDRO host app flashes the board over the same RS-485 wire from its <a href="features.html#firmware">Firmware screen</a>. The <code>tools/</code> scripts are developer utilities for bench work and CI.</p></div></div>
+      <div class="callout warn"><div class="ci">&#9888;</div><div><p><b>HW-1 (current PCB): BOOT0 floats.</b> A hardware <em>reset</em> can intermittently boot the ST system ROM (serial returns a lone <code>\x00</code>). The firmware avoids this by <em>jumping</em> (never resetting) across app&harr;bootloader handoffs, so the update cycle is safe; on the bench, if a power-on/NRST lands in the ROM, just retry until the app answers <code>version</code>. The permanent fix is tying BOOT0 to GND on the next PCB revision.</p></div></div>
+    </section>
+
+    <hr class="hr" style="margin:40px 0">
+
+    <section id="configure" class="anchor-h">
+      <h2>Configure (persistent settings)</h2>
+      <p>The board keeps its rarely-changed configuration in flash (ping-pong A/B sectors, magic + CRC32,
+        power-fail safe). You rarely touch these directly — the host app reads them on connect and writes them
+        when you change a value — but you can configure them over the CLI too:</p>
+      <div class="code"><div class="code-head"><span>serial @ 115200 (e.g. tio /dev/ttyUSB0 -b 115200)</span></div>
+<pre><code>settings              <span class="cmt"># dump the current persisted settings</span>
+set servo.max 3000    <span class="cmt"># change a value in RAM</span>
+save                  <span class="cmt"># persist RAM settings to flash</span>
+load                  <span class="cmt"># reload settings from flash (discard RAM changes)</span></code></pre>
+      </div>
+      <p class="small muted">Persisted fields include the scale sync ratios, servo config (max speed, acceleration,
+        jog, index feedrate), the boot mode and the active bank. See
+        <a href="reference.html#settings">Board vs host settings</a> for what lives where and why.</p>
+    </section>
+
+    <section id="cli" class="anchor-h">
+      <h2>CLI reference</h2>
+      <p>Both CLIs share the wire format: <code>key=value</code> lines, a <code>crc=HH</code> line, then a blank
+        line; requests may carry an optional <code>*HH</code> XOR-8 checksum.</p>
+      <div class="grid grid-2">
+        <div class="card">
+          <h4 class="mt0">Application <span class="chip amber" style="vertical-align:middle">USART1</span></h4>
+          <p class="small"><code>sta</code> · <code>get</code>/<code>set &lt;var&gt;</code> · <code>settings</code> · <code>save</code>/<code>load</code> · <code>bank [0|1]</code> · <code>rollback</code> · <code>version</code> · <code>help</code> · <code>update</code> (enter bootloader) · <code>reset</code></p>
+          <p class="small muted">Variables: <code>scales.{pos,speed,num,den,sync,filt}</code> (4-element) · <code>servo.{max,acc,jog,idx,mode,pos,speed,tgt}</code> · <code>diag.{cycles,interval}</code></p>
+        </div>
+        <div class="card">
+          <h4 class="mt0">Bootloader <span class="chip" style="vertical-align:middle">greets bootloader=ready</span></h4>
+          <p class="small"><code>version</code> · <code>info</code> (bank mode/active/loaded/validity) · <code>bank [0|1]</code> · <code>boot.mode &lt;app|bl&gt;</code> · <code>flash &lt;0|1&gt;</code> (YMODEM receive) · <code>erase &lt;0|1&gt;</code> · <code>crc &lt;0|1&gt;</code> · <code>copy</code> · <code>rollback</code> · <code>boot</code> · <code>reset</code> · <code>help</code></p>
+        </div>
+      </div>
+    </section>
+
+    <section id="diag" class="anchor-h">
+      <h2>Diagnostics</h2>
+      <p>The <strong>USR_LED (PB12)</strong> blinks a repeating ~1&nbsp;Hz, active-low heartbeat so you can tell
+        what's running at a glance:</p>
+      <ul class="ticks">
+        <li><strong>1 blink</strong> — the application is running.</li>
+        <li><strong>2 blinks</strong> — the bootloader is running.</li>
+        <li>Longer counts are reserved for app error codes.</li>
+      </ul>
+      <p class="small muted">Over serial, <code>version</code> confirms the app is alive and reports the firmware
+        version; <code>sta</code> streams live scale + servo state.</p>
+    </section>
+
+    <hr class="hr" style="margin:40px 0">
+
+    <section id="develop" class="anchor-h">
+      <h2>Develop</h2>
+      <ul class="ticks">
+        <li><strong>Native unit tests</strong> exercise the transport-independent protocol logic (parser, dispatch, registry, checksum) with the HAL/CMSIS-RTOS mocked — <code>pio test -d app -e native</code>. Add tests under <code>app/test/</code>.</li>
+        <li><strong>Don't regenerate CubeMX.</strong> The CubeMX glue in <code>app/src/</code> is frozen and hand-maintained; the HAL comes from the pinned framework — don't add <code>Drivers/</code>, <code>system_stm32f4xx.c</code>, or a startup <code>.s</code>.</li>
+        <li><strong>Board specifics</strong> baked into the build: Cortex-M4F hard-float, <code>HSE_VALUE=8000000</code> (the board crystal is 8&nbsp;MHz; the framework default of 25&nbsp;MHz would give the wrong USART1 baud), and <code>-Ofast</code> to match the timing-sensitive motion ISR.</li>
+        <li><strong>The register image</strong> is the <code>rampsHandler_t.shared</code> struct — its field layout is the host contract; changes must stay in sync with the app.</li>
+        <li><strong>Peripheral/pin map</strong> and full architecture detail live in <code>docs/migration_todo.md</code>.</li>
+      </ul>
+      <h4>CI &amp; releases</h4>
+      <p><code>.github/workflows/ci.yml</code> builds both projects and runs the native tests on every push.
+        <code>release.yml</code> uses python-semantic-release: pushes to <code>dev</code> cut
+        <code>vX.Y.Z-beta.N</code> prereleases, pushes to <code>main</code> cut stable releases. Each release
+        publishes <code>drdro-app.*</code>, <code>drdro-bootloader.*</code> and <code>drdro-factory.hex</code>.</p>
+      <div class="callout info"><div class="ci">&#128221;</div><div><p>Design docs to read before hacking on internals: <code>docs/protocol_design.md</code> (line protocol + IAP rationale), <code>docs/dualbank_design.md</code> (the A/B update system), and <code>docs/HARDWARE.md</code> (board bugs the firmware works around).</p></div></div>
+    </section>
+
+    <section id="links" class="anchor-h">
+      <h2>Links</h2>
+      <div class="grid grid-2">
+        <div class="card"><h4 class="mt0">Repository</h4>
+          <a href="https://github.com/bartei/drdro-firmware-f4" target="_blank" rel="noopener">drdro-firmware-f4 &#8599;</a>
+          <a href="https://github.com/bartei/drdro-firmware-f4/tree/main/docs" target="_blank" rel="noopener">Design docs (docs/) &#8599;</a>
+          <a href="https://github.com/bartei/drdro-firmware-f4/releases" target="_blank" rel="noopener">Releases &#8599;</a>
+        </div>
+        <div class="card"><h4 class="mt0">Related docs</h4>
+          <a href="reference.html">Protocol &amp; architecture reference</a>
+          <a href="features.html#firmware">Updating firmware from the app</a>
+          <a href="arch.html">Appliance image</a>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+</div>
+
+<footer class="footer">
+  <div class="wrap fnote">&copy; <span data-year>2026</span> drDRO project · GPL-3.0-or-later · <a href="index.html">Home</a></div>
+</footer>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>

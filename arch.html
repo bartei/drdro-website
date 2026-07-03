@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Appliance image (drdro-arch) — drDRO</title>
+  <meta name="description" content="Understand, configure and build the drDRO Raspberry Pi appliance image (Arch Linux ARM): boot flow, access & maintenance, serial/Wi-Fi/display config, and building it yourself.">
+  <link rel="icon" type="image/png" href="assets/img/favicon.png">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><img class="logo" src="assets/img/logo.png" alt=""> dr<b>DRO</b></a>
+    <button class="nav-toggle" aria-label="Menu">&#8801;</button>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="features.html">Features</a>
+      <a href="screenshots.html">Screenshots</a>
+      <a href="videos.html">Videos</a>
+      <a href="flash.html">Get Started</a>
+      <div class="nav-dd">
+        <button class="nav-dd-btn" aria-haspopup="true" aria-expanded="false">Developers <span aria-hidden="true">&#9662;</span></button>
+        <div class="nav-dd-menu">
+          <a href="develop.html">App development</a>
+          <a href="firmware.html">Board firmware</a>
+          <a href="arch.html">Appliance image</a>
+          <a href="reference.html">Protocol reference</a>
+        </div>
+      </div>
+      <a class="nav-cta" href="https://github.com/bartei/drdro-arch" target="_blank" rel="noopener">GitHub &#8599;</a>
+    </div>
+  </div>
+</nav>
+
+<header class="section-tight" style="padding-top:48px">
+  <div class="wrap">
+    <span class="eyebrow">Appliance image · drdro-arch</span>
+    <h1 style="font-size:clamp(2rem,4.4vw,3rem);margin:.2rem 0 .6rem">The Raspberry Pi appliance image</h1>
+    <p class="lead">A purpose-built <strong>Arch Linux ARM</strong> image that boots straight into drDRO —
+      full-screen, silent, touch-ready, no desktop. One image covers the Pi 3 / 4 / 5 family. This page explains
+      how it works, how to configure and maintain it, and how to build your own.</p>
+    <div class="btn-row" style="margin-top:6px">
+      <a class="btn btn-primary" href="flash.html">Just want to flash it? &#8594;</a>
+      <a class="btn btn-ghost" href="https://github.com/bartei/drdro-arch" target="_blank" rel="noopener">Image repo &#8599;</a>
+      <span class="chip green"><span class="dot"></span> Verified on Pi 3B &amp; Pi 5</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap section-tight" style="padding-top:0">
+<div class="doc-layout">
+
+  <aside class="toc">
+    <h5>On this page</h5>
+    <a href="#overview">Overview</a>
+    <a href="#setup">Set it up</a>
+    <a href="#how">How it works</a>
+    <a href="#access">Access &amp; maintenance</a>
+    <a href="#configure">Configure</a>
+    <a href="#build">Build it yourself</a>
+    <a href="#ci">CI &amp; releases</a>
+    <a href="#links">Links</a>
+  </aside>
+
+  <div>
+
+    <section id="overview" class="anchor-h">
+      <h2>Overview</h2>
+      <p>Rather than install Raspberry Pi OS and hand-configure Python, Kivy, touch, autostart and the serial link,
+        the appliance image ships all of it pre-baked. Power on and you're in the DRO.</p>
+      <ul class="ticks">
+        <li>Boots directly to the app on <strong>KMS/DRM</strong> (SDL2 <code>kmsdrm</code>) — full-screen, no display server.</li>
+        <li>The UART is left free for the <strong>RS-485 board link</strong> (no serial console).</li>
+        <li>The app venv ships <em>inside</em> the image, so <strong>first boot needs no network</strong>.</li>
+        <li>Root is writable, so the in-app updater can pull a newer app or flash firmware in the field.</li>
+        <li>The root filesystem <strong>auto-grows</strong> to fill the SD card on first boot — any card size works.</li>
+        <li>One universal <strong>aarch64</strong> image; the firmware selects the right device tree per board.</li>
+      </ul>
+    </section>
+
+    <hr class="hr" style="margin:40px 0">
+
+    <section id="setup" class="anchor-h">
+      <h2>Set it up</h2>
+      <p>For end use, there's nothing to assemble — download the release image, flash it, and boot:</p>
+      <ol class="steps">
+        <li><h4>Download &amp; flash</h4><p>Grab the latest image and write it to an SD card — the full walkthrough (Raspberry Pi Imager or <code>dd</code>, checksum, tested Pi models) is on the <a href="flash.html">Get Started</a> page.</p></li>
+        <li><h4>Wire it up</h4><p>Connect the drDRO board to the Pi's RS-485/UART and attach the touchscreen.</p></li>
+        <li><h4>Boot</h4><p>Power on — silent splash, then the app. The root FS grows to the card on the first boot.</p></li>
+      </ol>
+      <div class="callout info"><div class="ci">&#128295;</div><div><p>The rest of this page is for people who want to <b>configure, maintain, customise or rebuild</b> the image. If you only want a working DRO, <a href="flash.html">Get Started</a> is all you need.</p></div></div>
+    </section>
+
+    <section id="how" class="anchor-h">
+      <h2>How it works</h2>
+      <p>The image is assembled by a single <code>build.sh</code> that runs on a <strong>native aarch64 host</strong>
+        (the GitHub ARM64 runner — no qemu):</p>
+      <ol class="steps">
+        <li><h4>Fetch the base rootfs</h4><p>Downloads and unpacks the Arch Linux ARM <code>rpi-aarch64</code> tarball.</p></li>
+        <li><h4>Swap in the Raspberry Pi kernel</h4><p>In a native <code>chroot</code>, replaces ALARM's mainline kernel + U-Boot with <strong>linux-rpi</strong> — so it direct-boots <code>kernel8.img</code>, our <code>cmdline.txt</code> is authoritative, and the firmware auto-selects the per-board dtb.</p></li>
+        <li><h4>Install the runtime</h4><p><code>pacman -S</code> the packages the Kivy wheel needs: SDL2, mesa (VC4/V3D GL), <code>mtdev</code> (touch), Python, git, NetworkManager, audio, fonts (see <code>packages.txt</code>).</p></li>
+        <li><h4>Bake the app venv</h4><p><code>pyenv</code> builds CPython 3.13 and <code>pip install</code>s the app into a venv at <code>/opt/drdro/app/.venv</code> — native aarch64 wheels, so the venv lives inside the image and first boot is offline-clean.</p></li>
+        <li><h4>Overlay &amp; configure</h4><p>Drops in the launcher, <code>drdro.service</code> and the helper services, and writes <code>config.txt</code>/<code>cmdline.txt</code>.</p></li>
+        <li><h4>Assemble the SD image</h4><p>Builds a 2-partition image (FAT boot + ext4 root) with <code>mke2fs -d</code> + <code>mtools</code> — no loop mounts.</p></li>
+      </ol>
+      <p class="small muted">Boot is silent (Plymouth drDRO splash → app). <code>drdro-growfs.service</code> grows the root
+        partition on first boot; <code>drdro-vt-watch.service</code> hands the screen between the app and the
+        maintenance consoles.</p>
+    </section>
+
+    <hr class="hr" style="margin:40px 0">
+
+    <section id="access" class="anchor-h">
+      <h2>Access &amp; maintenance</h2>
+      <div class="grid grid-2">
+        <div class="card">
+          <h4 class="mt0">Logins <span class="chip" style="vertical-align:middle">dev defaults</span></h4>
+          <ul class="ticks">
+            <li><code>default</code> / <code>default</code> — in <code>wheel</code>, passwordless sudo.</li>
+            <li><strong>SSH</strong> enabled (password login): <code>ssh default@&lt;ip&gt;</code>.</li>
+            <li>Stock ALARM <code>root</code>/<code>root</code> and <code>alarm</code>/<code>alarm</code> also exist.</li>
+          </ul>
+          <p class="small muted">These are intentionally permissive for setup — change the password (and consider disabling SSH) on a shared network.</p>
+        </div>
+        <div class="card">
+          <h4 class="mt0">On-screen consoles</h4>
+          <ul class="ticks">
+            <li><strong>Ctrl+Alt+F2</strong> — a login shell for maintenance.</li>
+            <li><strong>Ctrl+Alt+F3</strong> — a live tail of the app / Kivy log.</li>
+            <li><strong>Ctrl+Alt+F1</strong> — back to the app.</li>
+          </ul>
+          <p class="small muted">The app takes a couple of seconds to release the screen on a VT switch (SDL teardown).</p>
+        </div>
+      </div>
+      <div class="callout info"><div class="ci">&#128193;</div><div><p><b>Where things live:</b> the app is at <code>/opt/drdro/app</code> (a git checkout + its <code>.venv</code>), runs as root via <code>drdro.service</code>, and logs to <code>/var/log/drdro/</code>. The image stamps its version at <code>/etc/drdro-release</code>.</p></div></div>
+    </section>
+
+    <section id="configure" class="anchor-h">
+      <h2>Configure</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>What</th><th>Where / how</th></tr></thead>
+          <tbody>
+            <tr><td>Serial port to the board</td><td>App <code>config.ini</code> → <code>serial_port = /dev/serial0</code> (the Pi's GPIO UART; set by the build).</td></tr>
+            <tr><td>Wi-Fi</td><td>From the app's <a href="features.html#network">Network screen</a> (NetworkManager / <code>nmcli</code>), or <code>nmcli</code> over SSH.</td></tr>
+            <tr><td>Display</td><td>Targets a 1024×600 USB touch panel; <code>mtdev</code> auto-detects the touch controller — no Kivy config needed.</td></tr>
+            <tr><td>Boot / kernel options</td><td><code>boot/config.txt</code> and <code>boot/cmdline.txt</code> (linux-rpi stock + drDRO settings appended).</td></tr>
+            <tr><td>Pi 5 USB power</td><td>Ships <code>usb_max_current_enable</code> so a USB touch panel doesn't trip the 600 mA cap.</td></tr>
+            <tr><td>Storage</td><td>Root auto-grows on first boot (<code>drdro-growfs.service</code>); no manual resize.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <hr class="hr" style="margin:40px 0">
+
+    <section id="build" class="anchor-h">
+      <h2>Build it yourself</h2>
+      <p>Building the image requires a <strong>native aarch64 host with root</strong> (a Raspberry Pi, an aarch64
+        VM/cloud instance, or the ARM64 CI runner) — there's no qemu emulation step.</p>
+
+      <h4>Local build</h4>
+      <div class="code"><div class="code-head"><span>bash (on an aarch64 host)</span><button class="copy-btn">Copy</button></div>
+<pre><code>git clone https://github.com/bartei/drdro-arch.git
+cd drdro-arch
+sudo ./build.sh
+<span class="cmt"># -> out/drdro-arch-rpi-aarch64.img</span></code></pre>
+      </div>
+
+      <h4>Build-time knobs (environment variables)</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>APP_REF</code></td><td><code>latest</code></td><td>App version to bake in — newest release tag, or a tag/branch/rev.</td></tr>
+            <tr><td><code>ENABLE_PLYMOUTH</code></td><td><code>1</code></td><td>Silent boot + drDRO splash; <code>0</code> = verbose boot.</td></tr>
+            <tr><td><code>BOOT_MB</code></td><td><code>128</code></td><td>Size of the FAT boot partition.</td></tr>
+            <tr><td><code>DRDRO_VERSION</code></td><td><code>dev</code></td><td>Version stamp (CI passes the real release version).</td></tr>
+            <tr><td><code>WORK</code> / <code>OUT</code></td><td><code>./work</code> / <code>./out</code></td><td>Scratch and output directories.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Build via CI, then flash</h4>
+      <div class="code"><div class="code-head"><span>bash</span><button class="copy-btn">Copy</button></div>
+<pre><code>gh workflow run build-arch -R bartei/drdro-arch          <span class="cmt"># or push to main</span>
+gh run download &lt;run-id&gt; -R bartei/drdro-arch -n drdro-arch-rpi-aarch64
+sudo dd if=drdro-arch-rpi-aarch64.img of=/dev/sdX bs=4M conv=fsync status=progress</code></pre>
+      </div>
+
+      <h4>What to customise</h4>
+      <ul class="ticks">
+        <li><strong><code>packages.txt</code></strong> — the pacman runtime package list.</li>
+        <li><strong><code>overlay/</code></strong> — files copied onto the rootfs: the launcher &amp; <code>drdro.service</code>, growfs / VT-watch / log-tty3 services, the <code>99-com.rules</code> udev rule (creates <code>/dev/serial0</code>), Wi-Fi <code>modprobe</code> / powersave tweaks.</li>
+        <li><strong><code>boot/config.txt</code>, <code>boot/cmdline.txt</code></strong> — firmware &amp; kernel settings.</li>
+        <li><strong><code>plymouth/theme/</code></strong> — the boot splash.</li>
+      </ul>
+      <div class="callout warn"><div class="ci">&#9888;</div><div><p><b>Rolling release, by design.</b> Each build pulls current Arch packages plus the latest app release (<code>APP_REF=latest</code>), so builds aren't reproducible commit-to-commit — CI is run on demand and images are tested before release. Pin <code>APP_REF</code> to a tag for a repeatable build.</p></div></div>
+    </section>
+
+    <section id="ci" class="anchor-h">
+      <h2>CI &amp; releases</h2>
+      <p>Same tooling as the rest of the project (python-semantic-release, conventional commits): a push to
+        <code>dev</code> cuts a <code>vX.Y.Z-beta.N</code> prerelease; a push to <code>main</code> cuts a stable
+        release. Each release publishes a compressed image and checksum:</p>
+      <div class="code"><div class="code-head"><span>bash</span><button class="copy-btn">Copy</button></div>
+<pre><code>zstd -d drdro-arch-vX.Y.Z-rpi-aarch64.img.zst
+sha256sum -c SHA256SUMS
+sudo dd if=drdro-arch-vX.Y.Z-rpi-aarch64.img of=/dev/sdX bs=4M conv=fsync status=progress</code></pre>
+      </div>
+      <p class="small muted">The image stamps its own version — <code>cat /etc/drdro-release</code> on a running board.</p>
+    </section>
+
+    <section id="links" class="anchor-h">
+      <h2>Links</h2>
+      <div class="grid grid-2">
+        <div class="card"><h4 class="mt0">Repository</h4>
+          <a href="https://github.com/bartei/drdro-arch" target="_blank" rel="noopener">drdro-arch &#8599;</a>
+          <a href="https://github.com/bartei/drdro-arch/releases" target="_blank" rel="noopener">Releases (image downloads) &#8599;</a>
+        </div>
+        <div class="card"><h4 class="mt0">Related docs</h4>
+          <a href="flash.html">Flashing &amp; first boot</a>
+          <a href="develop.html">App development</a>
+          <a href="firmware.html">Board firmware</a>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+</div>
+
+<footer class="footer">
+  <div class="wrap fnote">&copy; <span data-year>2026</span> drDRO project · GPL-3.0-or-later · <a href="index.html">Home</a></div>
+</footer>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>

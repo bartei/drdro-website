@@ -127,6 +127,36 @@
     bgImgs.forEach(function (el) { el.style.backgroundImage = "url('" + el.getAttribute("data-bg") + "')"; });
   }
 
+  /* Nav dropdown — toggle on click (touch/keyboard); hover handled in CSS ---- */
+  document.querySelectorAll(".nav-dd").forEach(function (dd) {
+    var btn = dd.querySelector(".nav-dd-btn");
+    if (!btn) return;
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var open = dd.classList.toggle("open");
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  });
+  document.addEventListener("click", function () {
+    document.querySelectorAll(".nav-dd.open").forEach(function (dd) {
+      dd.classList.remove("open");
+      var b = dd.querySelector(".nav-dd-btn");
+      if (b) b.setAttribute("aria-expanded", "false");
+    });
+  });
+
+  /* Highlight the current page in the nav (incl. the dropdown) ------------- */
+  var page = (location.pathname.split("/").pop() || "index.html").toLowerCase();
+  if (page === "") page = "index.html";
+  document.querySelectorAll(".nav-links a[href]").forEach(function (a) {
+    var href = (a.getAttribute("href") || "").split("/").pop().toLowerCase();
+    if (href === page) {
+      a.classList.add("active");
+      var dd = a.closest(".nav-dd");
+      if (dd) { var b = dd.querySelector(".nav-dd-btn"); if (b) b.classList.add("active"); }
+    }
+  });
+
   /* Year in footer --------------------------------------------------------- */
   var y = document.querySelector("[data-year]");
   if (y) y.textContent = new Date().getFullYear();
