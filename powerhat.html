@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Power HAT (drdro-powercom) — drDRO</title>
+  <meta name="description" content="The drDRO Power HAT: a 4-layer Raspberry Pi HAT that powers the Pi from a wide DC input (adjustable 5 V buck) and provides a protected, auto-direction RS-485 link to the controller board.">
+  <link rel="icon" type="image/png" href="assets/img/favicon.png">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><img class="logo" src="assets/img/logo.png" alt=""> dr<b>DRO</b></a>
+    <button class="nav-toggle" aria-label="Menu">&#8801;</button>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="features.html">Features</a>
+      <a href="screenshots.html">Screenshots</a>
+      <a href="videos.html">Videos</a>
+      <a href="flash.html">Get Started</a>
+      <div class="nav-dd">
+        <button class="nav-dd-btn" aria-haspopup="true" aria-expanded="false">Developers <span aria-hidden="true">&#9662;</span></button>
+        <div class="nav-dd-menu">
+          <a href="develop.html">App development</a>
+          <a href="firmware.html">Board firmware</a>
+          <a href="powerhat.html">Power HAT</a>
+          <a href="arch.html">Appliance image</a>
+          <a href="reference.html">Protocol reference</a>
+        </div>
+      </div>
+      <a class="nav-cta" href="https://github.com/bartei/drdro-powercom" target="_blank" rel="noopener">GitHub &#8599;</a>
+    </div>
+  </div>
+</nav>
+
+<header class="section-tight" style="padding-top:48px">
+  <div class="wrap">
+    <span class="eyebrow">Hardware · drdro-powercom</span>
+    <h1 style="font-size:clamp(2rem,4.4vw,3rem);margin:.2rem 0 .6rem">The Power HAT</h1>
+    <p class="lead">A Raspberry Pi HAT that powers the Pi from a wide-input DC supply <strong>and</strong> gives
+      it a protected RS-485 link to the drDRO controller board — the power-and-comms interface of the system.
+      Designed in EasyEDA Pro.</p>
+    <div class="btn-row" style="margin-top:6px">
+      <a class="btn btn-ghost" href="https://github.com/bartei/drdro-powercom" target="_blank" rel="noopener">Hardware repo &#8599;</a>
+      <span class="chip">Raspberry Pi HAT</span>
+      <span class="chip">4-layer PCB</span>
+      <span class="chip amber">Provvedo LLC · Power Hat V4</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap" style="padding-bottom:8px">
+  <div class="hero-shot" style="max-width:760px;margin:0 auto">
+    <img src="assets/img/powerhat-3d.png" alt="3D render of the drDRO Power HAT" data-zoom="assets/img/powerhat-3d.png" data-cap="drDRO Power HAT — 3D render">
+  </div>
+</div>
+
+<div class="wrap section-tight">
+<div class="doc-layout">
+
+  <aside class="toc">
+    <h5>On this page</h5>
+    <a href="#overview">Overview</a>
+    <a href="#how">How it works</a>
+    <a href="#specs">Specifications</a>
+    <a href="#connectors">Connectors</a>
+    <a href="#bom">Key components</a>
+    <a href="#views">Board views</a>
+    <a href="#edit">Open &amp; edit</a>
+    <a href="#manufacturing">Manufacturing</a>
+    <a href="#using">Using it</a>
+    <a href="#links">Links</a>
+  </aside>
+
+  <div>
+
+    <section id="overview" class="anchor-h">
+      <h2>Overview</h2>
+      <p>On a drDRO machine the Raspberry Pi runs the <a href="features.html">touchscreen app</a> and talks to the
+        STM32 controller over RS-485. The Power HAT solves the two practical problems of putting a Pi in a machine
+        cabinet:</p>
+      <div class="grid grid-2">
+        <div class="card">
+          <h4 class="mt0">Power</h4>
+          <p>Take the machine's DC supply (e.g. 12–24 V) and step it down to a clean <strong>5 V</strong> to run the
+            Pi — with a resettable fuse, reverse-polarity protection and input surge/TVS.</p>
+        </div>
+        <div class="card">
+          <h4 class="mt0">Comms</h4>
+          <p>Bridge the Pi's UART to a half-duplex <strong>RS-485</strong> bus (the drDRO line protocol), with
+            automatic direction control and bus-side TVS protection.</p>
+        </div>
+      </div>
+      <ul class="ticks" style="margin-top:1.2rem">
+        <li>Wide DC input → 5 V via a synchronous buck (<code>SCT2650</code>, 4.5–60 V range).</li>
+        <li>RS-485 transceiver (<code>SP3485</code>, 3.3 V, ≤ 10 Mbps) with <strong>automatic TX/RX direction</strong> — no GPIO needed.</li>
+        <li>Status LEDs: 5 V present, 3.3 V present, TX activity.</li>
+        <li>Pluggable 3.81 mm terminal blocks for DC input and for the controller (5 V + A/B).</li>
+        <li>Raspberry Pi HAT form factor (40-pin header, four corner mounting holes); 4-layer PCB, 1 oz outer copper.</li>
+      </ul>
+    </section>
+
+    <hr class="hr" style="margin:40px 0">
+
+    <section id="how" class="anchor-h">
+      <h2>How it works</h2>
+      <div class="code"><div class="code-head"><span>power &amp; comms path</span></div>
+<pre><code>DC input ─▶ PPTC fuse (U3) ─▶ series Schottky D3 ─┬─ TVS D2 ─┬─ VDC ─▶ Buck U4 (SCT2650) ─▶ 5V ─▶ Pi 5V rail
+(VCC/GND)                     (reverse-polarity)  │ (surge)  │        + L1 4.7µH, bulk caps
+                                                  └──────────┘
+Pi 3V3 ─▶ RS-485 transceiver U2 (SP3485) ─▶ series R + TVS D1 ─▶ A / B ─▶ terminal block (to controller)
+Pi UART TXD/RXD ───────────▲  auto-direction (Q1 driven from TXD)</code></pre>
+      </div>
+      <ul class="ticks">
+        <li>The <strong>5 V</strong> the Pi runs on is generated <em>on the HAT</em> and fed back into the Pi through the header; the Pi's <strong>3.3 V</strong> rail powers the RS-485 logic side.</li>
+        <li><strong>Direction is automatic</strong> — Q1 drives the transceiver's DE/RE from the TX line, so the Pi only needs its normal UART.</li>
+      </ul>
+      <div class="callout warn"><div class="ci">&#128295;</div><div>
+        <p><b>The 5 V rail is adjustable — set it to 5.1 V.</b> The buck's feedback divider includes a
+          <b>multiturn trimmer (R12)</b>. Before relying on the board, measure the output with a multimeter and
+          trim it to <b>5.1 V</b>, giving the Pi and its USB devices a little headroom above 5.0 V under load. See
+          the calibration step under <a href="#using">Using it</a>.</p>
+      </div></div>
+    </section>
+
+    <section id="specs" class="anchor-h">
+      <h2>Specifications</h2>
+      <div class="table-wrap">
+        <table>
+          <tbody>
+            <tr><th>Form factor</th><td>Raspberry Pi HAT (40-pin GPIO, 4 corner mounting holes)</td></tr>
+            <tr><th>PCB</th><td>4-layer, 1 oz outer copper</td></tr>
+            <tr><th>DC input</th><td>Wide DC — buck rated 4.5–60 V, bulk caps 63 V; <b>keep the supply ≤ 36 V</b> (bounded by the input TVS, <code>SMDJ36CA</code>). A 12–24 V machine supply is ideal.</td></tr>
+            <tr><th>Output</th><td>5 V to the Raspberry Pi — <b>adjustable via multiturn trimmer R12; set to 5.1 V</b> before use</td></tr>
+            <tr><th>Comms</th><td>Half-duplex RS-485, ≤ 10 Mbps, auto-direction; A/B on a terminal block</td></tr>
+            <tr><th>Connectors</th><td>2 × 4-pos 3.81 mm pluggable terminal blocks (DC in, controller out) + 2×20 GPIO header</td></tr>
+            <tr><th>Indicators</th><td>5 V, 3.3 V and TX-activity LEDs</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout danger" style="margin-top:16px"><div class="ci">&#9889;</div><div><p><b>Single power source.</b> The HAT supplies the Pi's 5 V rail — do <b>not</b> also power the Pi from its USB-C connector at the same time.</p></div></div>
+    </section>
+
+    <section id="connectors" class="anchor-h">
+      <h2>Connectors</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Connector</th><th>Type</th><th>Signals</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>DC input</td><td>4-pos 3.81 mm</td><td><code>VCC</code>, <code>VCC</code>, <code>GND</code>, <code>GND</code></td><td>Machine DC supply in (doubled pins for current)</td></tr>
+            <tr><td>Controller</td><td>4-pos 3.81 mm</td><td><code>GND</code>, <code>5V</code>, <code>A</code>, <code>B</code></td><td>RS-485 + power to the drDRO board</td></tr>
+            <tr><td>GPIO header</td><td>2×20, 2.54 mm</td><td><code>5V</code>, <code>GND</code>, <code>TXD</code>/<code>RXD</code> (GPIO14/15), <code>3V3</code></td><td>Mounts on the Raspberry Pi</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <hr class="hr" style="margin:40px 0">
+
+    <section id="bom" class="anchor-h">
+      <h2>Key components</h2>
+      <p>JLCPCB/LCSC parts throughout; the full BOM is exportable from the EasyEDA Pro project.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Ref</th><th>Part</th><th>Function</th></tr></thead>
+          <tbody>
+            <tr><td><code>U4</code></td><td>SCT2650STER</td><td>Wide-input (4.5–60 V) step-down regulator → 5 V</td></tr>
+            <tr><td><code>L1</code></td><td>SRP1265A-4R7M (4.7 µH, 13.5 A)</td><td>Buck power inductor</td></tr>
+            <tr><td><code>U3</code></td><td>3425L300/48QR (PPTC, 3 A hold)</td><td>Resettable input fuse</td></tr>
+            <tr><td><code>D3 / D4</code></td><td>SL10100 Schottky</td><td>Reverse-polarity / freewheel</td></tr>
+            <tr><td><code>D2</code></td><td>SMDJ36CA (bidirectional TVS, 36 V)</td><td>Input surge protection</td></tr>
+            <tr><td><code>C10/12/14</code></td><td>100 µF / 63 V (Rubycon RVT)</td><td>Input bulk</td></tr>
+            <tr><td><code>U2</code></td><td>SP3485EN-L</td><td>RS-485 transceiver (3.3 V, 10 Mbps)</td></tr>
+            <tr><td><code>Q1</code></td><td>MMBT3904</td><td>RS-485 auto-direction control</td></tr>
+            <tr><td><code>D1</code></td><td>SM712 (CDSOT23)</td><td>RS-485 A/B TVS protection</td></tr>
+            <tr><td><code>R12</code></td><td>3224W 10 kΩ multiturn trimmer</td><td>5 V output adjust (set to 5.1 V)</td></tr>
+            <tr><td><code>LED1–3</code></td><td>KT-0603R</td><td>TX activity / 5 V / 3.3 V indicators</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="views" class="anchor-h">
+      <h2>Board views</h2>
+      <div class="gallery">
+        <div class="shot"><div class="thumb" style="aspect-ratio:auto"><img src="assets/img/powerhat-3d.png" alt="3D render" data-zoom="assets/img/powerhat-3d.png" data-cap="3D render"></div><div class="cap"><h4>3D render</h4><p>Assembled board.</p></div></div>
+        <div class="shot"><div class="thumb" style="aspect-ratio:auto"><img src="assets/img/powerhat-2d.png" alt="2D PCB layout" data-zoom="assets/img/powerhat-2d.png" data-cap="2D PCB layout"></div><div class="cap"><h4>PCB layout</h4><p>Top + bottom copper.</p></div></div>
+        <div class="shot"><div class="thumb" style="aspect-ratio:auto"><img src="assets/img/powerhat-schematic.png" alt="Schematic" data-zoom="assets/img/powerhat-schematic.png" data-cap="Schematic"></div><div class="cap"><h4>Schematic</h4><p>Power + RS-485.</p></div></div>
+      </div>
+    </section>
+
+    <hr class="hr" style="margin:40px 0">
+
+    <section id="edit" class="anchor-h">
+      <h2>Open &amp; edit the project</h2>
+      <p>The design is an <strong>EasyEDA Pro</strong> project (<code>power-hat-project.epro2</code>).</p>
+      <ol class="steps">
+        <li><h4>Install EasyEDA Pro</h4><p>Get it from <a href="https://pro.easyeda.com/" target="_blank" rel="noopener">pro.easyeda.com</a> (desktop or web).</p></li>
+        <li><h4>Import the project</h4><p><b>File → Import → EasyEDA Pro</b> and select <code>power-hat-project.epro2</code> from the repo.</p></li>
+        <li><h4>Everything's inside</h4><p>Schematic, PCB, footprints, symbols and 3D models are all contained in the archive; parts reference LCSC components, ready for assembly.</p></li>
+      </ol>
+    </section>
+
+    <section id="manufacturing" class="anchor-h">
+      <h2>Manufacturing</h2>
+      <p>From the opened project in EasyEDA Pro:</p>
+      <ul class="ticks">
+        <li><strong>PCB:</strong> export Gerbers (<b>4-layer</b>, 1 oz outer copper) + drill files.</li>
+        <li><strong>BOM:</strong> export the bill of materials (LCSC part numbers already assigned).</li>
+        <li><strong>Assembly:</strong> export the pick-and-place (CPL); the design targets JLCPCB SMT assembly.</li>
+      </ul>
+    </section>
+
+    <section id="using" class="anchor-h">
+      <h2>Using it</h2>
+      <ol class="steps">
+        <li><h4>Assemble the board</h4><p>Or order it fabricated + assembled.</p></li>
+        <li><h4>Calibrate the 5 V rail first — with the HAT <em>not</em> on the Pi</h4><p>Apply the DC input, put a multimeter on the 5 V output, and turn the <b>multiturn trimmer (R12)</b> until it reads <b>5.1 V</b>. Then remove input power. This protects the Pi from ever seeing an un-trimmed voltage.</p></li>
+        <li><h4>Mount it</h4><p>Plug the HAT onto the Raspberry Pi's 40-pin header.</p></li>
+        <li><h4>Wire power in</h4><p>Machine DC supply (<b>≤ 36 V</b>) into the DC-in terminal block (<code>VCC</code> / <code>GND</code>).</p></li>
+        <li><h4>Wire the controller</h4><p>The controller terminal block (<code>5V</code> / <code>A</code> / <code>B</code> / <code>GND</code>) to the drDRO board's RS-485 + power.</p></li>
+        <li><h4>Power on</h4><p>The HAT powers the Pi and bridges its UART to the RS-485 bus. The LEDs confirm 5 V, 3.3 V and TX activity.</p></li>
+      </ol>
+      <div class="callout good"><div class="ci">&#9989;</div><div><p>Next: flash the Pi with the <a href="flash.html">appliance image</a> and make sure the board runs compatible <a href="firmware.html">firmware</a>.</p></div></div>
+    </section>
+
+    <section id="links" class="anchor-h">
+      <h2>Links</h2>
+      <div class="grid grid-2">
+        <div class="card"><h4 class="mt0">Repository</h4>
+          <a href="https://github.com/bartei/drdro-powercom" target="_blank" rel="noopener">drdro-powercom &#8599;</a>
+          <a href="https://pro.easyeda.com/" target="_blank" rel="noopener">EasyEDA Pro &#8599;</a>
+        </div>
+        <div class="card"><h4 class="mt0">Related docs</h4>
+          <a href="firmware.html">Board firmware</a>
+          <a href="arch.html">Appliance image</a>
+          <a href="flash.html">Flashing &amp; first boot</a>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+</div>
+
+<footer class="footer">
+  <div class="wrap fnote">&copy; <span data-year>2026</span> drDRO project · Hardware &copy; Provvedo LLC · GPL-3.0-or-later · <a href="index.html">Home</a></div>
+</footer>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>
