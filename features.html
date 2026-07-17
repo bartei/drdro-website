@@ -102,7 +102,7 @@
         <div class="card">
           <span class="chip amber">ELS</span>
           <h4>Electronic lead screw</h4>
-          <p>Threading and power-feed synchronised to the spindle. Pick a thread pitch (mm/TPI) and the follower axis tracks the spindle through the configured ratio.</p>
+          <p>Threading and power-feed synchronised to the spindle. Pick a thread pitch (mm/TPI) — or enter a custom value — and the follower axis tracks the spindle through the configured ratio.</p>
         </div>
         <div class="card">
           <span class="chip amber">JOG</span>
@@ -206,6 +206,14 @@
           </ul>
           <p>With roles assigned, ELS mode on the home screen synchronises the saddle to the spindle at the chosen thread pitch, driving repeatable single-point threading and powered feeds.</p>
         </div>
+      </div>
+      <div style="margin-top:24px">
+        <h3>Running ELS</h3>
+        <ul>
+          <li><strong>One-touch engage</strong> — enabling the servo output on the ELS page also arms the spindle as the sync source automatically, so threading and feeds work straight from the ELS page; there's no need to enable the spindle from another screen first.</li>
+          <li><strong>Custom feeds</strong> — the feed table has a <em>Custom&#8230;</em> button for any value not in the presets. It's read in the active tab's unit — thread <strong>pitch in mm</strong> (Thread MM), <strong>threads per inch</strong> (Thread IN), or feed per rev (Feed MM / Feed IN) — and applied as an exact ratio.</li>
+          <li><strong>Readable spindle read-out</strong> — the spindle's angular position is hidden once it turns faster than ~30&nbsp;RPM (where the figure is an unreadable blur); the live RPM stays on screen.</li>
+        </ul>
       </div>
     </section>
 
